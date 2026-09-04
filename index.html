@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>fourNine</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div class="brand"><span class="brand-mark" role="img" aria-label="Black cat head"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M8.2 12.2 6.3 5.5l7.1 3.5h5.2l7.1-3.5-1.9 6.7c1.7 2 2.7 4.6 2.7 7.5 0 6.2-4.7 10.8-10.4 10.8S5.7 25.9 5.7 19.7c0-2.9.9-5.5 2.5-7.5Z"/></svg></span> fourNine</div>
+        <div class="canvas-controls" aria-label="Canvas size">
+          <label>W <input id="canvas-width" type="number" min="64" max="8192" value="1920" /></label>
+          <label>H <input id="canvas-height" type="number" min="64" max="8192" value="1080" /></label>
+          <button id="resize-canvas" class="quiet-button">Resize</button>
+        </div>
+        <div class="file-actions">
+          <button id="new-file" class="quiet-button">New</button>
+          <button id="save-project" class="quiet-button">Save project</button>
+          <label class="quiet-button file-label">Open project<input id="open-project" type="file" accept=".vibeart,application/json" hidden /></label>
+          <button id="export-png" class="quiet-button">Export PNG</button>
+          <label class="export-format">Layers <select id="layer-export-format"><option value="png">PNG</option><option value="jpeg">JPG</option></select></label>
+          <button id="export-layers" class="quiet-button">Export layers</button>
+          <button id="export-video" class="primary-button">Export video</button>
+        </div>
+      </header>
+
+      <section class="workspace">
+        <aside class="tool-panel">
+          <div class="section-label">Tool</div>
+          <div class="tool-row">
+            <button class="tool-button selected" data-tool="brush" title="Brush (B)">✎<span>Draw</span></button>
+            <button class="tool-button" data-tool="eraser" title="Eraser (E)">⌫<span>Erase</span></button>
+            <button class="tool-button" data-tool="pan" title="Hand / Pan (H)">✋<span>Pan</span></button>
+            <button class="tool-button" data-tool="lasso" title="Freeform lasso (L)">⌁<span>Lasso</span></button>
+          </div>
+          <div class="divider"></div>
+          <label class="control-label">Color <input id="color" type="color" value="#22283b" /></label>
+          <div class="palette-group" aria-label="Grayscale palette">
+            <span class="palette-label">Grayscale</span>
+            <div class="swatch-grid grayscale-swatches">
+              <button class="color-swatch" data-color="#000000" title="Black" aria-label="Black"></button>
+              <button class="color-swatch" data-color="#292929" title="Charcoal" aria-label="Charcoal"></button>
+              <button class="color-swatch" data-color="#555555" title="Dark gray" aria-label="Dark gray"></button>
+              <button class="color-swatch" data-color="#808080" title="Gray" aria-label="Gray"></button>
+              <button class="color-swatch" data-color="#aaaaaa" title="Light gray" aria-label="Light gray"></button>
+              <button class="color-swatch" data-color="#d4d4d4" title="Pale gray" aria-label="Pale gray"></button>
+              <button class="color-swatch" data-color="#f2f2f2" title="Near white" aria-label="Near white"></button>
+              <button class="color-swatch" data-color="#ffffff" title="White" aria-label="White"></button>
+            </div>
+          </div>
+          <div class="palette-group" aria-label="Color palette">
+            <span class="palette-label">Colors</span>
+            <div class="swatch-grid color-swatches">
+              <button class="color-swatch" data-color="#e84b4b" title="Red" aria-label="Red"></button>
+              <button class="color-swatch" data-color="#f58245" title="Orange" aria-label="Orange"></button>
+              <button class="color-swatch" data-color="#f2d34f" title="Yellow" aria-label="Yellow"></button>
+              <button class="color-swatch" data-color="#70bc56" title="Green" aria-label="Green"></button>
+              <button class="color-swatch" data-color="#35b7a9" title="Teal" aria-label="Teal"></button>
+              <button class="color-swatch" data-color="#4c9be8" title="Blue" aria-label="Blue"></button>
+              <button class="color-swatch" data-color="#6572d9" title="Indigo" aria-label="Indigo"></button>
+              <button class="color-swatch" data-color="#ae67c8" title="Purple" aria-label="Purple"></button>
+              <button class="color-swatch" data-color="#e5619d" title="Pink" aria-label="Pink"></button>
+            </div>
+          </div>
+          <label class="control-label">Brush size <output id="brush-value">18 px</output>
+            <input id="brush-size" type="range" min="1" max="180" value="18" />
+          </label>
+          <label id="softness-control" class="control-label softness-control">Edge softness <output id="softness-value">0%</output>
+            <input id="softness" type="range" min="0" max="100" value="0" />
+          </label>
+          <label class="toggle-label"><input id="pressure-size" type="checkbox" /> Use pen pressure for size</label>
+          <label id="pressure-range-control" class="control-label pressure-control">Pressure range <output id="pressure-range-value">70%</output>
+            <input id="pressure-range" type="range" min="0" max="100" value="70" />
+          </label>
+          <p id="pen-readout" class="pen-readout">Tablet input: waiting for pen</p>
+          <label class="control-label">Layer opacity <output id="opacity-value">100%</output>
+            <input id="opacity" type="range" min="1" max="100" value="100" />
+          </label>
+          <div class="divider"></div>
+          <div class="zoom-readout"><span>Zoom</span><strong id="zoom-label">100%</strong></div>
+          <button id="fit-canvas" class="quiet-button full-width">Fit to screen</button>
+          <p class="hint">Scroll to zoom. Choose Pan or press H to move around.</p>
+        </aside>
+
+        <section class="stage" id="stage" aria-label="Drawing canvas">
+          <div id="canvas-wrap" class="canvas-wrap" role="application" aria-label="Drawing area"></div>
+          <div id="empty-state" class="empty-state">Your canvas is ready</div>
+        </section>
+
+        <aside class="layers-panel">
+          <div class="layers-heading"><span>Layers</span><button id="add-layer" class="icon-button" title="Add layer">＋</button></div>
+          <div id="layers-list" class="layers-list"></div>
+          <div class="layers-footer">
+            <button id="move-layer-up" class="icon-button" title="Move layer up">↑</button>
+            <button id="move-layer-down" class="icon-button" title="Move layer down">↓</button>
+            <button id="merge-layer-down" class="icon-button" title="Merge selected layer down (Shift + M)">⇊</button>
+            <button id="delete-layer" class="icon-button danger" title="Delete layer">⌫</button>
+          </div>
+        </aside>
+      </section>
+      <section class="timeline-panel" aria-label="Timeline">
+        <div class="timeline-toolbar">
+          <button id="play-timeline" class="play-button" title="Play or pause (Space)">▶</button>
+          <button id="onion-skin" class="onion-button" title="Show the previous frame as a ghost image">Onion skin</button>
+          <label class="loop-label"><input id="loop-timeline" type="checkbox" checked /> Loop</label>
+          <label>FPS <input id="timeline-fps" type="number" min="1" max="60" value="12" /></label>
+          <label>Frames <input id="timeline-duration" type="number" min="1" max="3600" value="72" /></label>
+          <span id="frame-readout" class="frame-readout">Frame 1 / 72</span>
+        </div>
+        <div class="scrubber-row"><input id="timeline-scrubber" type="range" min="0" max="71" value="0" /></div>
+        <div id="timeline-tracks" class="timeline-tracks"></div>
+      </section>
+      <footer class="statusbar"><span id="status">Ready</span><span>Space play · B draw · E erase · L lasso · Esc clear selection · H pan · [ ] brush size · Shift { } edge · +/− zoom · 1 fit · ⌘/Ctrl Z undo</span></footer>
+    </main>
+    <script src="app.js"></script>
+  </body>
+</html>
