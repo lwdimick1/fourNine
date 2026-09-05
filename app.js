@@ -49,7 +49,20 @@
   function updateTimelineReadout() { $('frame-readout').textContent = `Frame ${state.timeline.frame + 1} / ${state.timeline.duration}`; $('timeline-scrubber').value = state.timeline.frame; }
   function updatePlayhead() { const left = `${(state.timeline.frame / Math.max(1, state.timeline.duration - 1)) * 100}%`; document.querySelectorAll('.timeline-playhead').forEach(playhead => playhead.style.left = left); updateTimelineReadout(); }
   function refreshOnionSkin() { state.onionCanvases.forEach(canvas => canvas.remove()); state.onionCanvases = []; if (!state.timeline.onion) return; const addGhost = (frame, color, opacity, zIndex) => { const canvas = document.createElement('canvas'); canvas.width = state.width; canvas.height = state.height; canvas.className = 'paint-layer onion-skin'; canvas.style.opacity = opacity; canvas.style.zIndex = zIndex; const ctx = canvas.getContext('2d'); renderOnionComposite(ctx, frame); ctx.globalCompositeOperation = 'source-in'; ctx.fillStyle = color; ctx.fillRect(0, 0, state.width, state.height); ctx.globalCompositeOperation = 'source-over'; wrap.append(canvas); state.onionCanvases.push(canvas); }; if (state.timeline.frame > 0) addGhost(state.timeline.frame - 1, '#35c1ca', '.28', state.layers.length + 2); const selected = activeLayer(); if (selected && selected.end === state.timeline.frame && state.timeline.frame < state.timeline.duration - 1) addGhost(state.timeline.frame + 1, '#f7c970', '.22', state.layers.length + 3); }
-  function setFrame(frame) { state.timeline.frame = Math.max(0, Math.min(state.timeline.duration - 1, Math.round(frame))); const layerAtFrame = state.layers.find(layer => layerIsOnFrame(layer)); if (layerAtFrame && layerAtFrame.id !== state.activeId) { state.activeId = layerAtFrame.id; renderLayers(); } else { applyLayerVisibility(); refreshOnionSkin(); } updatePlayhead(); }
+  function setFrame(frame) {
+    state.timeline.frame = Math.max(0, Math.min(state.timeline.duration - 1, Math.round(frame)));
+    const selected = activeLayer();
+    const layerAtFrame = state.layers.find(layer => layerIsOnFrame(layer));
+    // Keep a layer the user deliberately selected, until its timeline range ends.
+    if ((!selected || !layerIsOnFrame(selected)) && layerAtFrame && layerAtFrame.id !== state.activeId) {
+      state.activeId = layerAtFrame.id;
+      renderLayers();
+    } else {
+      applyLayerVisibility();
+      refreshOnionSkin();
+    }
+    updatePlayhead();
+  }
   function renderTimeline() {
     state.timeline.frame = Math.max(0, Math.min(state.timeline.duration - 1, state.timeline.frame)); $('timeline-fps').value = state.timeline.fps; $('timeline-duration').value = state.timeline.duration; $('loop-timeline').checked = state.timeline.loop; $('onion-skin').classList.toggle('enabled', state.timeline.onion); $('timeline-scrubber').max = state.timeline.duration - 1;
     const tracks = $('timeline-tracks'); tracks.replaceChildren();
@@ -110,7 +123,15 @@
       const eye = document.createElement('button'); eye.className = 'visibility'; eye.textContent = layer.visible ? '◉' : '○'; eye.title = 'Toggle visibility';
       eye.onclick = (e) => { e.stopPropagation(); layer.visible = !layer.visible; renderLayers(); commitHistory(); };
       const name = document.createElement('span'); name.className = 'layer-name'; name.textContent = layer.name;
-      name.onclick = (e) => e.stopPropagation();
+      name.onclick = (e) => {
+        e.stopPropagation();
+        state.activeId = layer.id;
+        layersList.querySelectorAll('.layer-item').forEach(row => row.classList.toggle('active', row === item));
+        controls.opacity.value = Math.round(layer.opacity * 100);
+        $('opacity-value').textContent = `${controls.opacity.value}%`;
+        refreshOnionSkin();
+        setStatus(`${layer.name} selected`);
+      };
       name.ondblclick = (e) => { e.stopPropagation(); state.activeId=layer.id; const input=document.createElement('input'); input.value=layer.name; name.replaceWith(input); input.focus(); input.select(); const previousName=layer.name; const done=()=>{layer.name=input.value.trim()||'Untitled layer';renderLayers();if(layer.name!==previousName)commitHistory();}; input.onblur=done; input.onkeydown=(ev)=>{if(ev.key==='Enter')input.blur(); if(ev.key==='Escape'){input.value=previousName;input.blur();}}; };
       item.append(eye, name); item.onclick = () => { state.activeId = layer.id; renderLayers(); }; layersList.append(item);
     });
