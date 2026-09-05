@@ -1,7 +1,7 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const stage = $('stage'), wrap = $('canvas-wrap'), layersList = $('layers-list');
-  const state = { width: 1920, height: 1080, layers: [], activeId: null, tool: 'brush', zoom: 1, panX: 0, panY: 0, drawing: false, lassoing: false, panning: false, spaceHeld: false, spacePan: false, spaceTimer: null, last: null, strokeCanvas: null, onionCanvases: [], reference: { src: null, x: 0, y: 0, width: 0, height: 0, ratio: 1, opacity: 1, element: null, mode: null, last: null }, transforming: false, selection: { points: [], overlay: null, mask: null, layerId: null }, timeline: { frame: 0, duration: 72, fps: 12, loop: true, onion: false, playing: false, lastTick: 0, raf: null }, history: [], redo: [], projectFileHandle: null };
+  const state = { width: 1920, height: 1080, layers: [], activeId: null, tool: 'brush', zoom: 1, panX: 0, panY: 0, drawing: false, lassoing: false, panning: false, zooming: false, zoomAnchor: null, spaceHeld: false, spacePan: false, spaceTimer: null, last: null, strokeCanvas: null, onionCanvases: [], reference: { src: null, x: 0, y: 0, width: 0, height: 0, ratio: 1, opacity: 1, element: null, mode: null, last: null }, transforming: false, selection: { points: [], overlay: null, mask: null, layerId: null }, timeline: { frame: 0, duration: 72, fps: 12, loop: true, onion: false, playing: false, lastTick: 0, raf: null }, history: [], redo: [], projectFileHandle: null };
   const controls = { color: $('color'), size: $('brush-size'), softness: $('softness'), opacity: $('opacity'), referenceOpacity: $('reference-opacity'), pressure: $('pressure-size'), pressureRange: $('pressure-range') };
 
   function setStatus(text) { $('status').textContent = text; }
@@ -203,22 +203,27 @@
   }
   stage.addEventListener('pointerdown', (e) => {
     if(e.button!==0 && e.button!==1) return;
-    reportPenInput(e); stage.setPointerCapture(e.pointerId);
-    const pan=isPan(e), point=pan?{x:e.clientX,y:e.clientY}:canvasPoint(e);
+    reportPenInput(e); stage.setPointerCapture(e.pointerId); e.preventDefault();
+    const zoomGesture = e.button === 0 && e.metaKey && e.altKey;
+    const pan=!zoomGesture&&isPan(e), point=pan?{x:e.clientX,y:e.clientY}:canvasPoint(e);
+    state.zooming = zoomGesture;
+    state.zoomAnchor = zoomGesture ? { x: e.clientX - stage.getBoundingClientRect().left, y: e.clientY - stage.getBoundingClientRect().top } : null;
     state.panning=pan;
-    state.transforming=!pan&&state.tool==='reference'&&startReferenceTransform(point);
-    state.lassoing=!pan&&!state.transforming&&state.tool==='lasso';
-    state.drawing=!pan&&!state.transforming&&state.tool!=='lasso'&&state.tool!=='reference'&&state.tool!=='bucket';
-    state.last=point;
+    state.transforming=!zoomGesture&&!pan&&state.tool==='reference'&&startReferenceTransform(point);
+    state.lassoing=!zoomGesture&&!pan&&!state.transforming&&state.tool==='lasso';
+    state.drawing=!zoomGesture&&!pan&&!state.transforming&&state.tool!=='lasso'&&state.tool!=='reference'&&state.tool!=='bucket';
+    state.last=zoomGesture?{x:e.clientX,y:e.clientY}:point;
     wrap.classList.toggle('panning',pan); wrap.classList.toggle('is-dragging',pan);
-    if(state.lassoing) startLasso(point);
+    if (state.zooming) setStatus('Drag up to zoom in, down to zoom out');
+    else if(state.lassoing) startLasso(point);
     else if(!pan&&state.tool==='bucket') paintBucket(point);
     else if(!pan&&!state.transforming&&state.tool!=='reference'){ startStrokePreview(); brushTo(point,true,e); }
     else if(state.tool==='reference'&&!state.transforming) setStatus(state.reference.src ? 'Click the reference to move it; drag its lower-right corner to scale' : 'Import a PNG or JPG reference image first');
   });
   stage.addEventListener('pointermove', (e) => {
     reportPenInput(e); if(!state.last) return;
-    if(state.panning){state.panX+=e.clientX-state.last.x;state.panY+=e.clientY-state.last.y;state.last={x:e.clientX,y:e.clientY};applyTransform();}
+    if(state.zooming){const verticalDistance=e.clientY-state.last.y;if(verticalDistance){zoomAt(state.zoomAnchor.x,state.zoomAnchor.y,Math.pow(1.012,-verticalDistance));state.last={x:e.clientX,y:e.clientY};}}
+    else if(state.panning){state.panX+=e.clientX-state.last.x;state.panY+=e.clientY-state.last.y;state.last={x:e.clientX,y:e.clientY};applyTransform();}
     else if(state.transforming) transformReference(canvasPoint(e));
     else if(state.lassoing){addLassoPoint(canvasPoint(e));}
     else if(state.drawing){const p=canvasPoint(e);brushTo(p,false,e);state.last=p;}
@@ -227,7 +232,7 @@
     if(state.lassoing)finalizeLasso();
     if(state.drawing) { applyStrokePreview(); commitHistory(); setStatus('Stroke added'); }
     if(state.transforming) { state.reference.mode=null; state.reference.last=null; updateReferenceElement(); commitHistory(); setStatus('Reference image updated'); }
-    state.drawing=false;state.lassoing=false;state.transforming=false;state.panning=false;state.last=null;wrap.classList.remove('is-dragging');
+    state.drawing=false;state.lassoing=false;state.transforming=false;state.zooming=false;state.zoomAnchor=null;state.panning=false;state.last=null;wrap.classList.remove('is-dragging');
   };
   stage.addEventListener('pointerup',finish);stage.addEventListener('pointercancel',finish);
   stage.addEventListener('wheel',(e)=>{e.preventDefault();const r=stage.getBoundingClientRect();zoomAt(e.clientX-r.left,e.clientY-r.top,e.deltaY<0?1.12:1/1.12);},{passive:false});
