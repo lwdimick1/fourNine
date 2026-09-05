@@ -134,6 +134,51 @@
   function startStrokePreview() { const layer = activeLayer(); if (!layer || state.tool === 'eraser') return; const canvas = document.createElement('canvas'); canvas.width = state.width; canvas.height = state.height; canvas.className = 'paint-layer stroke-preview'; canvas.style.zIndex = `${+layer.canvas.style.zIndex + .5}`; canvas.style.opacity = String(layer.opacity); wrap.append(canvas); state.strokeCanvas = canvas; }
   function applyStrokePreview() { const preview = state.strokeCanvas, layer = activeLayer(); if (!preview || !layer) return; const ctx = layer.canvas.getContext('2d'); ctx.save(); ctx.globalCompositeOperation = state.tool === 'eraser' ? 'destination-out' : 'source-over'; ctx.drawImage(preview, 0, 0); ctx.restore(); preview.remove(); state.strokeCanvas = null; }
   function brushTo(point, first=false, event) { const canvas = state.tool === 'eraser' ? activeLayer()?.canvas : state.strokeCanvas; const ctx=canvas?.getContext('2d'); if(!ctx) return; const size=(+controls.size.value*pressureFactor(event))/state.zoom; ctx.lineCap='round';ctx.lineJoin='round';ctx.lineWidth=size;ctx.globalAlpha=1;ctx.globalCompositeOperation=state.tool==='eraser'?'destination-out':'source-over';ctx.strokeStyle=controls.color.value;if(+controls.softness.value===0){ctx.beginPath();ctx.moveTo(state.last.x,state.last.y);ctx.lineTo(point.x,point.y);ctx.stroke();if(first){ctx.beginPath();ctx.arc(point.x,point.y,size/2,0,Math.PI*2);ctx.fillStyle=controls.color.value;ctx.fill();}}else{const dx=point.x-state.last.x,dy=point.y-state.last.y,distance=Math.hypot(dx,dy),steps=Math.max(1,Math.ceil(distance/Math.max(1,size*.12)));for(let i=first?0:1;i<=steps;i++){const t=i/steps;softStamp(ctx,state.last.x+dx*t,state.last.y+dy*t,size);}} }
+  function paintBucket(point) {
+    const layer = activeLayer();
+    if (!layer) return;
+    const x = Math.floor(point.x), y = Math.floor(point.y);
+    if (x < 0 || y < 0 || x >= state.width || y >= state.height) return;
+
+    const ctx = layer.canvas.getContext('2d');
+    const image = ctx.getImageData(0, 0, state.width, state.height);
+    const pixels = image.data;
+    const start = (y * state.width + x) * 4;
+    const target = [pixels[start], pixels[start + 1], pixels[start + 2], pixels[start + 3]];
+    const hex = controls.color.value;
+    const fill = [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16), 255];
+    if (target.every((value, index) => value === fill[index])) { setStatus('That area already has this color'); return; }
+
+    const matches = (px, py) => {
+      const index = (py * state.width + px) * 4;
+      return pixels[index] === target[0] && pixels[index + 1] === target[1] && pixels[index + 2] === target[2] && pixels[index + 3] === target[3];
+    };
+    const paint = (px, py) => {
+      const index = (py * state.width + px) * 4;
+      pixels[index] = fill[0]; pixels[index + 1] = fill[1]; pixels[index + 2] = fill[2]; pixels[index + 3] = fill[3];
+    };
+    const stack = [[x, y]];
+    while (stack.length) {
+      const [seedX, seedY] = stack.pop();
+      if (!matches(seedX, seedY)) continue;
+      let left = seedX, right = seedX;
+      while (left > 0 && matches(left - 1, seedY)) left--;
+      while (right < state.width - 1 && matches(right + 1, seedY)) right++;
+      let aboveOpen = false, belowOpen = false;
+      for (let px = left; px <= right; px++) {
+        paint(px, seedY);
+        const aboveMatches = seedY > 0 && matches(px, seedY - 1);
+        const belowMatches = seedY < state.height - 1 && matches(px, seedY + 1);
+        if (aboveMatches && !aboveOpen) stack.push([px, seedY - 1]);
+        if (belowMatches && !belowOpen) stack.push([px, seedY + 1]);
+        aboveOpen = aboveMatches;
+        belowOpen = belowMatches;
+      }
+    }
+    ctx.putImageData(image, 0, 0);
+    commitHistory();
+    setStatus('Area filled');
+  }
   function isPan(event) { return state.tool === 'pan' || event.button === 1 || state.spacePan; }
   function startReferenceTransform(point) {
     const reference = state.reference;
@@ -163,10 +208,11 @@
     state.panning=pan;
     state.transforming=!pan&&state.tool==='reference'&&startReferenceTransform(point);
     state.lassoing=!pan&&!state.transforming&&state.tool==='lasso';
-    state.drawing=!pan&&!state.transforming&&state.tool!=='lasso'&&state.tool!=='reference';
+    state.drawing=!pan&&!state.transforming&&state.tool!=='lasso'&&state.tool!=='reference'&&state.tool!=='bucket';
     state.last=point;
     wrap.classList.toggle('panning',pan); wrap.classList.toggle('is-dragging',pan);
     if(state.lassoing) startLasso(point);
+    else if(!pan&&state.tool==='bucket') paintBucket(point);
     else if(!pan&&!state.transforming&&state.tool!=='reference'){ startStrokePreview(); brushTo(point,true,e); }
     else if(state.tool==='reference'&&!state.transforming) setStatus(state.reference.src ? 'Click the reference to move it; drag its lower-right corner to scale' : 'Import a PNG or JPG reference image first');
   });
@@ -313,6 +359,6 @@
   $('new-file').onclick=()=>{if(confirm('Start a new blank canvas? Unsaved work will be lost.')){clearSelection(true);clearReference(true);state.projectFileHandle=null;state.layers.forEach(l=>l.canvas.remove());state.layers=[];makeLayer('Layer 1');placeCanvas();fitCanvas();commitHistory();setStatus('New canvas created');}};
   function changeBrushSize(amount) { controls.size.value = Math.max(+controls.size.min, Math.min(+controls.size.max, +controls.size.value + amount)); controls.size.dispatchEvent(new Event('input')); setStatus(`Brush size: ${controls.size.value} px`); }
   function changeSoftness(amount) { controls.softness.value = Math.max(+controls.softness.min, Math.min(+controls.softness.max, +controls.softness.value + amount)); controls.softness.dispatchEvent(new Event('input')); setStatus(`Edge softness: ${controls.softness.value}%`); }
-  document.addEventListener('keydown',e=>{const modifier=e.metaKey||e.ctrlKey;if(modifier&&e.key.toLowerCase()==='s'){e.preventDefault();$('save-project').click();return;}if(modifier&&e.key.toLowerCase()==='e'){e.preventDefault();$('export-png').click();return;}if(modifier&&e.key.toLowerCase()==='z'){e.preventDefault();if(e.shiftKey)redo();else undo();return;}if(e.target.matches('input, textarea'))return;if(e.key===' '){e.preventDefault();if(e.repeat||state.spaceHeld)return;state.spaceHeld=true;state.spaceTimer=setTimeout(()=>{state.spacePan=true;wrap.classList.add('panning');},180);return;}if(e.key==='Escape'){clearSelection();return;}if(e.key==='Enter'){e.preventDefault();togglePlayback();return;}if(e.shiftKey&&e.key.toLowerCase()==='n'){$('add-layer').click();return;}if(e.shiftKey&&e.key.toLowerCase()==='m'){$('merge-layer-down').click();return;}if(e.key.toLowerCase()==='b')chooseTool('brush');if(e.key.toLowerCase()==='e')chooseTool('eraser');if(e.key.toLowerCase()==='h')chooseTool('pan');if(e.key.toLowerCase()==='l')chooseTool('lasso');if(e.key.toLowerCase()==='r')chooseTool('reference');if(e.key==='[')changeBrushSize(-2);if(e.key===']')changeBrushSize(2);if(e.key==='{')changeSoftness(5);if(e.key==='}')changeSoftness(-5);if(e.key==='+'||e.key==='=')zoomAtCenter(1.2);if(e.key==='-')zoomAtCenter(1/1.2);if(e.key==='1')fitCanvas();if(e.key==='Delete'||e.key==='Backspace'){if(!deleteSelectedPixels())$('delete-layer').click();}});document.addEventListener('keyup',e=>{if(e.key!==' '||e.target.matches('input, textarea'))return;clearTimeout(state.spaceTimer);const wasPanning=state.spacePan;state.spaceHeld=false;state.spacePan=false;if(state.tool!=='pan')wrap.classList.remove('panning');if(!wasPanning)togglePlayback();});
+  document.addEventListener('keydown',e=>{const modifier=e.metaKey||e.ctrlKey;if(modifier&&e.key.toLowerCase()==='s'){e.preventDefault();$('save-project').click();return;}if(modifier&&e.key.toLowerCase()==='e'){e.preventDefault();$('export-png').click();return;}if(modifier&&e.key.toLowerCase()==='z'){e.preventDefault();if(e.shiftKey)redo();else undo();return;}if(e.target.matches('input, textarea'))return;if(e.key===' '){e.preventDefault();if(e.repeat||state.spaceHeld)return;state.spaceHeld=true;state.spaceTimer=setTimeout(()=>{state.spacePan=true;wrap.classList.add('panning');},180);return;}if(e.key==='Escape'){clearSelection();return;}if(e.key==='Enter'){e.preventDefault();togglePlayback();return;}if(e.shiftKey&&e.key.toLowerCase()==='n'){$('add-layer').click();return;}if(e.shiftKey&&e.key.toLowerCase()==='m'){$('merge-layer-down').click();return;}if(e.key.toLowerCase()==='b')chooseTool('brush');if(e.key.toLowerCase()==='e')chooseTool('eraser');if(e.key.toLowerCase()==='g')chooseTool('bucket');if(e.key.toLowerCase()==='h')chooseTool('pan');if(e.key.toLowerCase()==='l')chooseTool('lasso');if(e.key.toLowerCase()==='r')chooseTool('reference');if(e.key==='[')changeBrushSize(-2);if(e.key===']')changeBrushSize(2);if(e.key==='{')changeSoftness(5);if(e.key==='}')changeSoftness(-5);if(e.key==='+'||e.key==='=')zoomAtCenter(1.2);if(e.key==='-')zoomAtCenter(1/1.2);if(e.key==='1')fitCanvas();if(e.key==='Delete'||e.key==='Backspace'){if(!deleteSelectedPixels())$('delete-layer').click();}});document.addEventListener('keyup',e=>{if(e.key!==' '||e.target.matches('input, textarea'))return;clearTimeout(state.spaceTimer);const wasPanning=state.spacePan;state.spaceHeld=false;state.spacePan=false;if(state.tool!=='pan')wrap.classList.remove('panning');if(!wasPanning)togglePlayback();});
   $('pressure-range-control').classList.add('disabled'); makeLayer('Layer 1');placeCanvas();commitHistory();requestAnimationFrame(fitCanvas);
 })();
