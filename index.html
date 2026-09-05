@@ -17,6 +17,8 @@
         </div>
         <div class="file-actions">
           <button id="new-file" class="quiet-button">New</button>
+          <label class="quiet-button file-label">Import reference<input id="import-reference" type="file" accept="image/png,image/jpeg" hidden /></label>
+          <button id="remove-reference" class="quiet-button" disabled>Remove reference</button>
           <button id="save-project" class="quiet-button">Save project</button>
           <label class="quiet-button file-label">Open project<input id="open-project" type="file" accept=".vibeart,application/json" hidden /></label>
           <button id="export-png" class="quiet-button">Export PNG</button>
@@ -34,6 +36,7 @@
             <button class="tool-button" data-tool="eraser" title="Eraser (E)">⌫<span>Erase</span></button>
             <button class="tool-button" data-tool="pan" title="Hand / Pan (H)">✋<span>Pan</span></button>
             <button class="tool-button" data-tool="lasso" title="Freeform lasso (L)">⌁<span>Lasso</span></button>
+            <button class="tool-button" data-tool="reference" title="Move or scale reference image (R)">↔<span>Reference</span></button>
           </div>
           <div class="divider"></div>
           <label class="control-label">Color <input id="color" type="color" value="#22283b" /></label>
@@ -112,7 +115,7 @@
         <div class="scrubber-row"><input id="timeline-scrubber" type="range" min="0" max="71" value="0" /></div>
         <div id="timeline-tracks" class="timeline-tracks"></div>
       </section>
-      <footer class="statusbar"><span id="status">Ready</span><span>Space play · B draw · E erase · L lasso · Esc clear selection · H pan · [ ] brush size · Shift { } edge · +/− zoom · 1 fit · ⌘/Ctrl Z undo</span></footer>
+      <footer class="statusbar"><span id="status">Ready</span><span>Space play · B draw · E erase · L lasso · R reference · Esc clear selection · H pan · [ ] brush size · Shift { } edge · +/− zoom · 1 fit · ⌘/Ctrl Z undo</span></footer>
     </main>
     <script src="app.js"></script>
   </body>
