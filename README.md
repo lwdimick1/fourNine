@@ -15,7 +15,7 @@ No installation or account is required.
 ## Current features
 
 - 1920 × 1080 default canvas
-- Paintbrush, eraser, lasso selection, and pan tools
+- Paintbrush, eraser, lasso selection, pan, and move/scale reference-image tools
 - Adjustable brush size, softness, color, and pen-pressure sizing
 - Grayscale and RGB color palettes
 - Layers: create, rename, reorder, merge down, and control opacity
@@ -31,6 +31,7 @@ No installation or account is required.
 | `B` | Brush |
 | `E` | Eraser |
 | `L` | Lasso |
+| `R` | Reference image move/scale tool |
 | `H` | Pan |
 | `[` / `]` | Decrease / increase brush size |
 | `Shift + {` | Increase softness |
