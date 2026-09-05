@@ -123,7 +123,16 @@
   function zoomAtCenter(factor) { const r = stage.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, factor); setStatus(`Zoom: ${Math.round(state.zoom * 100)}%`); }
   function canvasPoint(event) { const r=wrap.getBoundingClientRect(); return { x:(event.clientX-r.left)/state.zoom, y:(event.clientY-r.top)/state.zoom }; }
   function reportPenInput(event) { const type = event.pointerType || 'unknown'; const pressure = Number.isFinite(event.pressure) ? event.pressure.toFixed(2) : 'unavailable'; const force = Number.isFinite(event.webkitForce) ? ` · Safari force ${event.webkitForce.toFixed(2)}` : ''; $('pen-readout').textContent = `Tablet input: ${type} · pressure ${pressure}${force}`; }
-  function pressureFactor(event) { const pressure = event.pressure; const usable = event.pointerType === 'pen' || (Number.isFinite(pressure) && Math.abs(pressure - .5) > .01); if (!controls.pressure.checked || !usable || pressure <= 0) return 1; const range = +controls.pressureRange.value / 100; return 1 - range * (1 - Math.max(.05, pressure)); }
+  function pressureFactor(event) {
+    const pressure = event.pressure;
+    const usable = event.pointerType === 'pen' || (Number.isFinite(pressure) && Math.abs(pressure - .5) > .01);
+    if (!controls.pressure.checked || !usable) return 1;
+    // Some tablets briefly report zero pressure as the pen lands or lifts.
+    // Treat that as the minimum pressure, never as a full-size brush.
+    const normalizedPressure = Math.max(.05, Math.min(1, Number.isFinite(pressure) ? pressure : 0));
+    const range = +controls.pressureRange.value / 100;
+    return 1 - range * (1 - normalizedPressure);
+  }
   function softStamp(ctx, x, y, size) { const radius = size / 2; const fade = ctx.createRadialGradient(x, y, 0, x, y, radius); const color = state.tool === 'eraser' ? '#000000' : controls.color.value; const core = Math.max(.02, 1 - (+controls.softness.value / 100)); fade.addColorStop(0, color); fade.addColorStop(core, color); fade.addColorStop(Math.min(1, core + .12), `${color}bb`); fade.addColorStop(1, `${color}00`); ctx.fillStyle = fade; ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2); ctx.fill(); }
   function clearSelection(quiet = false) { state.selection.overlay?.remove(); state.selection = { points: [], overlay: null, mask: null, layerId: null }; if (!quiet) setStatus('Selection cleared'); }
   function drawLassoOutline(closed = false) { const overlay = state.selection.overlay, points = state.selection.points; if (!overlay || !points.length) return; const ctx = overlay.getContext('2d'); ctx.clearRect(0, 0, state.width, state.height); ctx.beginPath(); ctx.moveTo(points[0].x, points[0].y); points.slice(1).forEach(point => ctx.lineTo(point.x, point.y)); if (closed) ctx.closePath(); ctx.setLineDash([7, 5]); ctx.lineWidth = 2 / state.zoom; ctx.strokeStyle = '#159eaa'; ctx.stroke(); ctx.setLineDash([]); }
