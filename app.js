@@ -1,8 +1,8 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const stage = $('stage'), wrap = $('canvas-wrap'), layersList = $('layers-list');
-  const state = { width: 1920, height: 1080, layers: [], activeId: null, tool: 'brush', zoom: 1, panX: 0, panY: 0, drawing: false, lassoing: false, panning: false, spaceHeld: false, spacePan: false, spaceTimer: null, last: null, strokeCanvas: null, onionCanvases: [], reference: { src: null, x: 0, y: 0, width: 0, height: 0, ratio: 1, element: null, mode: null, last: null }, transforming: false, selection: { points: [], overlay: null, mask: null, layerId: null }, timeline: { frame: 0, duration: 72, fps: 12, loop: true, onion: false, playing: false, lastTick: 0, raf: null }, history: [], redo: [], projectFileHandle: null };
-  const controls = { color: $('color'), size: $('brush-size'), softness: $('softness'), opacity: $('opacity'), pressure: $('pressure-size'), pressureRange: $('pressure-range') };
+  const state = { width: 1920, height: 1080, layers: [], activeId: null, tool: 'brush', zoom: 1, panX: 0, panY: 0, drawing: false, lassoing: false, panning: false, spaceHeld: false, spacePan: false, spaceTimer: null, last: null, strokeCanvas: null, onionCanvases: [], reference: { src: null, x: 0, y: 0, width: 0, height: 0, ratio: 1, opacity: 1, element: null, mode: null, last: null }, transforming: false, selection: { points: [], overlay: null, mask: null, layerId: null }, timeline: { frame: 0, duration: 72, fps: 12, loop: true, onion: false, playing: false, lastTick: 0, raf: null }, history: [], redo: [], projectFileHandle: null };
+  const controls = { color: $('color'), size: $('brush-size'), softness: $('softness'), opacity: $('opacity'), referenceOpacity: $('reference-opacity'), pressure: $('pressure-size'), pressureRange: $('pressure-range') };
 
   function setStatus(text) { $('status').textContent = text; }
   function makeLayer(name = `Layer ${state.layers.length + 1}`) {
@@ -30,12 +30,20 @@
     reference.element.style.top = `${reference.y}px`;
     reference.element.style.width = `${reference.width}px`;
     reference.element.style.height = `${reference.height}px`;
+    reference.element.style.opacity = reference.opacity ?? 1;
     reference.element.classList.toggle('selected', state.tool === 'reference');
+  }
+  function syncReferenceControls() {
+    const hasReference = Boolean(state.reference.src);
+    $('reference-opacity-control').classList.toggle('visible', hasReference);
+    controls.referenceOpacity.value = Math.round((state.reference.opacity ?? 1) * 100);
+    $('reference-opacity-value').textContent = `${controls.referenceOpacity.value}%`;
+    $('remove-reference').disabled = !hasReference;
   }
   function clearReference(quiet = false) {
     state.reference.element?.remove();
-    state.reference = { src: null, x: 0, y: 0, width: 0, height: 0, ratio: 1, element: null, mode: null, last: null };
-    $('remove-reference').disabled = true;
+    state.reference = { src: null, x: 0, y: 0, width: 0, height: 0, ratio: 1, opacity: 1, element: null, mode: null, last: null };
+    syncReferenceControls();
     if (!quiet) setStatus('Reference image removed');
   }
   function updateTimelineReadout() { $('frame-readout').textContent = `Frame ${state.timeline.frame + 1} / ${state.timeline.duration}`; $('timeline-scrubber').value = state.timeline.frame; }
@@ -77,7 +85,7 @@
     });
     updatePlayhead();
   }
-  function captureDocument() { const reference = state.reference.src ? { src: state.reference.src, x: state.reference.x, y: state.reference.y, width: state.reference.width, height: state.reference.height, ratio: state.reference.ratio } : null; return { width: state.width, height: state.height, activeId: state.activeId, reference, timeline: { frame: state.timeline.frame, duration: state.timeline.duration, fps: state.timeline.fps, loop: state.timeline.loop, onion: state.timeline.onion }, layers: state.layers.map(l => ({ id: l.id, name: l.name, visible: l.visible, opacity: l.opacity, start: l.start, end: l.end, image: l.canvas.toDataURL() })) }; }
+  function captureDocument() { const reference = state.reference.src ? { src: state.reference.src, x: state.reference.x, y: state.reference.y, width: state.reference.width, height: state.reference.height, ratio: state.reference.ratio, opacity: state.reference.opacity } : null; return { width: state.width, height: state.height, activeId: state.activeId, reference, timeline: { frame: state.timeline.frame, duration: state.timeline.duration, fps: state.timeline.fps, loop: state.timeline.loop, onion: state.timeline.onion }, layers: state.layers.map(l => ({ id: l.id, name: l.name, visible: l.visible, opacity: l.opacity, start: l.start, end: l.end, image: l.canvas.toDataURL() })) }; }
   function commitHistory() { state.history.push(captureDocument()); if (state.history.length > 40) state.history.shift(); state.redo = []; }
   async function restoreDocument(doc) {
     clearSelection(true); clearReference(true); state.layers.forEach(l => l.canvas.remove()); state.width = doc.width; state.height = doc.height; Object.assign(state.timeline, { frame: 0, duration: 72, fps: 12, loop: true, onion: false }, doc.timeline || {});
@@ -87,8 +95,8 @@
       await new Promise((resolve, reject) => { const image = new Image(); image.onload = () => { layer.canvas.getContext('2d').drawImage(image, 0, 0); resolve(); }; image.onerror = reject; image.src = source.image; });
     }
     state.activeId = doc.activeId && state.layers.some(l => l.id === doc.activeId) ? doc.activeId : state.layers[0].id;
-    if (doc.reference?.src) { state.reference = { ...doc.reference, ratio: doc.reference.ratio || doc.reference.width / doc.reference.height || 1, element: null, mode: null, last: null }; $('remove-reference').disabled = false; }
-    placeCanvas(); updateReferenceElement(); renderLayers();
+    if (doc.reference?.src) { state.reference = { ...doc.reference, ratio: doc.reference.ratio || doc.reference.width / doc.reference.height || 1, opacity: doc.reference.opacity ?? 1, element: null, mode: null, last: null }; }
+    placeCanvas(); updateReferenceElement(); syncReferenceControls(); renderLayers();
   }
   async function undo() { if (state.history.length < 2) return setStatus('Nothing to undo'); state.redo.push(state.history.pop()); await restoreDocument(state.history.at(-1)); setStatus('Undid last change'); }
   async function redo() { const next = state.redo.pop(); if (!next) return setStatus('Nothing to redo'); state.history.push(next); await restoreDocument(next); setStatus('Redid last change'); }
@@ -196,13 +204,20 @@
       const scale = Math.min(state.width * .75 / image.naturalWidth, state.height * .75 / image.naturalHeight, 1);
       const width = Math.max(40, image.naturalWidth * scale), height = Math.max(40, image.naturalHeight * scale);
       clearReference(true);
-      state.reference = { src, x: (state.width - width) / 2, y: (state.height - height) / 2, width, height, ratio, element: null, mode: null, last: null };
-      $('remove-reference').disabled = false;
+      state.reference = { src, x: (state.width - width) / 2, y: (state.height - height) / 2, width, height, ratio, opacity: 1, element: null, mode: null, last: null };
+      syncReferenceControls();
       updateReferenceElement(); chooseTool('reference'); commitHistory(); setStatus('Reference image imported');
     } catch { setStatus('That image could not be imported'); }
     event.target.value = '';
   };
   $('remove-reference').onclick = () => { if (!state.reference.src) return; clearReference(); commitHistory(); };
+  controls.referenceOpacity.oninput = () => {
+    if (!state.reference.src) return;
+    state.reference.opacity = +controls.referenceOpacity.value / 100;
+    $('reference-opacity-value').textContent = `${controls.referenceOpacity.value}%`;
+    updateReferenceElement();
+  };
+  controls.referenceOpacity.onchange = () => { if (state.reference.src) commitHistory(); };
   function stopPlayback() { state.timeline.playing = false; cancelAnimationFrame(state.timeline.raf); $('play-timeline').textContent = '▶'; $('play-timeline').classList.remove('playing'); }
   function playbackTick(now) { if (!state.timeline.playing) return; const frameMs = 1000 / state.timeline.fps; const elapsed = now - state.timeline.lastTick; if (elapsed >= frameMs) { const advance = Math.floor(elapsed / frameMs); state.timeline.lastTick += advance * frameMs; const next = state.timeline.frame + advance; if (next >= state.timeline.duration) { if (state.timeline.loop) setFrame(next % state.timeline.duration); else { setFrame(state.timeline.duration - 1); stopPlayback(); return; } } else setFrame(next); } state.timeline.raf = requestAnimationFrame(playbackTick); }
   function togglePlayback() { if (state.timeline.playing) return stopPlayback(); state.timeline.playing = true; state.timeline.lastTick = performance.now(); $('play-timeline').textContent = '❚❚'; $('play-timeline').classList.add('playing'); state.timeline.raf = requestAnimationFrame(playbackTick); }
@@ -230,7 +245,7 @@
   function projectData() {
     return {
       version: 3, width: state.width, height: state.height,
-      reference: state.reference.src ? { src: state.reference.src, x: state.reference.x, y: state.reference.y, width: state.reference.width, height: state.reference.height, ratio: state.reference.ratio } : null,
+      reference: state.reference.src ? { src: state.reference.src, x: state.reference.x, y: state.reference.y, width: state.reference.width, height: state.reference.height, ratio: state.reference.ratio, opacity: state.reference.opacity } : null,
       timeline: { frame: state.timeline.frame, duration: state.timeline.duration, fps: state.timeline.fps, loop: state.timeline.loop, onion: state.timeline.onion },
       layers: state.layers.map(layer => ({ id: layer.id, name: layer.name, visible: layer.visible, opacity: layer.opacity, start: layer.start, end: layer.end, image: layer.canvas.toDataURL() }))
     };
