@@ -38,6 +38,9 @@
             <button class="tool-button" data-tool="lasso" title="Freeform lasso (L)">⌁<span>Lasso</span></button>
             <button class="tool-button" data-tool="reference" title="Move or scale reference image (R)">↔<span>Move</span></button>
           </div>
+          <label id="reference-opacity-control" class="control-label reference-opacity-control">Reference opacity <output id="reference-opacity-value">100%</output>
+            <input id="reference-opacity" type="range" min="0" max="100" value="100" />
+          </label>
           <div class="divider"></div>
           <label class="control-label">Color <input id="color" type="color" value="#22283b" /></label>
           <div class="palette-group" aria-label="Grayscale palette">
