@@ -1,7 +1,7 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const stage = $('stage'), wrap = $('canvas-wrap'), layersList = $('layers-list');
-  const state = { width: 1920, height: 1080, layers: [], activeId: null, tool: 'brush', zoom: 1, panX: 0, panY: 0, drawing: false, lassoing: false, panning: false, spaceHeld: false, spacePan: false, spaceTimer: null, last: null, strokeCanvas: null, onionCanvases: [], reference: { src: null, x: 0, y: 0, width: 0, height: 0, ratio: 1, element: null, mode: null, last: null }, transforming: false, selection: { points: [], overlay: null, mask: null, layerId: null }, timeline: { frame: 0, duration: 72, fps: 12, loop: true, onion: false, playing: false, lastTick: 0, raf: null }, history: [], redo: [] };
+  const state = { width: 1920, height: 1080, layers: [], activeId: null, tool: 'brush', zoom: 1, panX: 0, panY: 0, drawing: false, lassoing: false, panning: false, spaceHeld: false, spacePan: false, spaceTimer: null, last: null, strokeCanvas: null, onionCanvases: [], reference: { src: null, x: 0, y: 0, width: 0, height: 0, ratio: 1, element: null, mode: null, last: null }, transforming: false, selection: { points: [], overlay: null, mask: null, layerId: null }, timeline: { frame: 0, duration: 72, fps: 12, loop: true, onion: false, playing: false, lastTick: 0, raf: null }, history: [], redo: [], projectFileHandle: null };
   const controls = { color: $('color'), size: $('brush-size'), softness: $('softness'), opacity: $('opacity'), pressure: $('pressure-size'), pressureRange: $('pressure-range') };
 
   function setStatus(text) { $('status').textContent = text; }
@@ -227,9 +227,40 @@
   function download(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}
   $('export-png').onclick=()=>{const out=document.createElement('canvas');out.width=state.width;out.height=state.height;renderComposite(out.getContext('2d'),state.timeline.frame);out.toBlob(b=>download(b,'fourNine-frame.png'));setStatus(`Frame ${state.timeline.frame + 1} exported`);};
   $('export-layers').onclick=async()=>{const format=$('layer-export-format').value,extension=format==='png'?'png':'jpg',mime=format==='png'?'image/png':'image/jpeg';$('export-layers').disabled=true;for(let index=0;index<state.layers.length;index++){const layer=state.layers[index],out=document.createElement('canvas'),ctx=out.getContext('2d');out.width=state.width;out.height=state.height;if(format==='jpeg'){ctx.fillStyle='#fff';ctx.fillRect(0,0,state.width,state.height);}ctx.globalAlpha=layer.opacity;ctx.drawImage(layer.canvas,0,0);const blob=await new Promise(resolve=>out.toBlob(resolve,mime,.95));const safeName=layer.name.trim().replace(/[^a-z0-9-_]+/gi,'-').replace(/^-+|-+$/g,'')||`layer-${index+1}`;if(blob)download(blob,`fourNine-layer-${String(index+1).padStart(2,'0')}-${safeName}.${extension}`);setStatus(`Exported ${index+1} of ${state.layers.length} layers`);await new Promise(resolve=>setTimeout(resolve,120));} $('export-layers').disabled=false;setStatus('Layer export complete');};
-  $('save-project').onclick=()=>{const doc={version:3,width:state.width,height:state.height,reference:state.reference.src?{src:state.reference.src,x:state.reference.x,y:state.reference.y,width:state.reference.width,height:state.reference.height,ratio:state.reference.ratio}:null,timeline:{frame:state.timeline.frame,duration:state.timeline.duration,fps:state.timeline.fps,loop:state.timeline.loop,onion:state.timeline.onion},layers:state.layers.map(l=>({id:l.id,name:l.name,visible:l.visible,opacity:l.opacity,start:l.start,end:l.end,image:l.canvas.toDataURL()}))};download(new Blob([JSON.stringify(doc)],{type:'application/json'}),'fourNine-art.vibeart');setStatus('Editable project saved');};
-  $('open-project').onchange=async(e)=>{const file=e.target.files[0];if(!file)return;try{const doc=JSON.parse(await file.text());if(!doc.layers?.length)throw Error();await restoreDocument({...doc,activeId:null});state.history=[captureDocument()];state.redo=[];fitCanvas();setStatus('Project opened');}catch{setStatus('That file could not be opened');}e.target.value='';};
-  $('new-file').onclick=()=>{if(confirm('Start a new blank canvas? Unsaved work will be lost.')){clearSelection(true);clearReference(true);state.layers.forEach(l=>l.canvas.remove());state.layers=[];makeLayer('Layer 1');placeCanvas();fitCanvas();commitHistory();setStatus('New canvas created');}};
+  function projectData() {
+    return {
+      version: 3, width: state.width, height: state.height,
+      reference: state.reference.src ? { src: state.reference.src, x: state.reference.x, y: state.reference.y, width: state.reference.width, height: state.reference.height, ratio: state.reference.ratio } : null,
+      timeline: { frame: state.timeline.frame, duration: state.timeline.duration, fps: state.timeline.fps, loop: state.timeline.loop, onion: state.timeline.onion },
+      layers: state.layers.map(layer => ({ id: layer.id, name: layer.name, visible: layer.visible, opacity: layer.opacity, start: layer.start, end: layer.end, image: layer.canvas.toDataURL() }))
+    };
+  }
+  async function saveProject() {
+    const contents = JSON.stringify(projectData());
+    if ('showSaveFilePicker' in window) {
+      try {
+        if (!state.projectFileHandle) {
+          state.projectFileHandle = await window.showSaveFilePicker({
+            suggestedName: 'untitled.vibeart',
+            types: [{ description: 'fourNine project', accept: { 'application/json': ['.vibeart'] } }]
+          });
+        }
+        const writable = await state.projectFileHandle.createWritable();
+        await writable.write(contents);
+        await writable.close();
+        setStatus(`Project saved: ${state.projectFileHandle.name}`);
+      } catch (error) {
+        if (error?.name === 'AbortError') setStatus('Save canceled');
+        else { state.projectFileHandle = null; setStatus('Could not save project'); }
+      }
+    } else {
+      download(new Blob([contents], { type: 'application/json' }), 'fourNine-art.vibeart');
+      setStatus('Project downloaded — your browser chooses the save location');
+    }
+  }
+  $('save-project').onclick = saveProject;
+  $('open-project').onchange=async(e)=>{const file=e.target.files[0];if(!file)return;try{const doc=JSON.parse(await file.text());if(!doc.layers?.length)throw Error();await restoreDocument({...doc,activeId:null});state.projectFileHandle=null;state.history=[captureDocument()];state.redo=[];fitCanvas();setStatus('Project opened');}catch{setStatus('That file could not be opened');}e.target.value='';};
+  $('new-file').onclick=()=>{if(confirm('Start a new blank canvas? Unsaved work will be lost.')){clearSelection(true);clearReference(true);state.projectFileHandle=null;state.layers.forEach(l=>l.canvas.remove());state.layers=[];makeLayer('Layer 1');placeCanvas();fitCanvas();commitHistory();setStatus('New canvas created');}};
   function changeBrushSize(amount) { controls.size.value = Math.max(+controls.size.min, Math.min(+controls.size.max, +controls.size.value + amount)); controls.size.dispatchEvent(new Event('input')); setStatus(`Brush size: ${controls.size.value} px`); }
   function changeSoftness(amount) { controls.softness.value = Math.max(+controls.softness.min, Math.min(+controls.softness.max, +controls.softness.value + amount)); controls.softness.dispatchEvent(new Event('input')); setStatus(`Edge softness: ${controls.softness.value}%`); }
   document.addEventListener('keydown',e=>{const modifier=e.metaKey||e.ctrlKey;if(modifier&&e.key.toLowerCase()==='s'){e.preventDefault();$('save-project').click();return;}if(modifier&&e.key.toLowerCase()==='e'){e.preventDefault();$('export-png').click();return;}if(modifier&&e.key.toLowerCase()==='z'){e.preventDefault();if(e.shiftKey)redo();else undo();return;}if(e.target.matches('input, textarea'))return;if(e.key===' '){e.preventDefault();if(e.repeat||state.spaceHeld)return;state.spaceHeld=true;state.spaceTimer=setTimeout(()=>{state.spacePan=true;wrap.classList.add('panning');},180);return;}if(e.key==='Escape'){clearSelection();return;}if(e.key==='Enter'){e.preventDefault();togglePlayback();return;}if(e.shiftKey&&e.key.toLowerCase()==='n'){$('add-layer').click();return;}if(e.shiftKey&&e.key.toLowerCase()==='m'){$('merge-layer-down').click();return;}if(e.key.toLowerCase()==='b')chooseTool('brush');if(e.key.toLowerCase()==='e')chooseTool('eraser');if(e.key.toLowerCase()==='h')chooseTool('pan');if(e.key.toLowerCase()==='l')chooseTool('lasso');if(e.key.toLowerCase()==='r')chooseTool('reference');if(e.key==='[')changeBrushSize(-2);if(e.key===']')changeBrushSize(2);if(e.key==='{')changeSoftness(5);if(e.key==='}')changeSoftness(-5);if(e.key==='+'||e.key==='=')zoomAtCenter(1.2);if(e.key==='-')zoomAtCenter(1/1.2);if(e.key==='1')fitCanvas();if(e.key==='Delete'||e.key==='Backspace'){if(!deleteSelectedPixels())$('delete-layer').click();}});document.addEventListener('keyup',e=>{if(e.key!==' '||e.target.matches('input, textarea'))return;clearTimeout(state.spaceTimer);const wasPanning=state.spacePan;state.spaceHeld=false;state.spacePan=false;if(state.tool!=='pan')wrap.classList.remove('panning');if(!wasPanning)togglePlayback();});
