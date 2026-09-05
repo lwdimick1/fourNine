@@ -38,6 +38,7 @@
             <button class="tool-button" data-tool="pan" title="Hand / Pan (H)">✋<span>Pan</span></button>
             <button class="tool-button" data-tool="lasso" title="Freeform lasso (L)">⌁<span>Lasso</span></button>
             <button class="tool-button" data-tool="reference" title="Move or scale reference image (R)">↔<span>Move</span></button>
+            <button class="tool-button" data-tool="bucket" title="Paint bucket / fill (G)">▰<span>Fill</span></button>
           </div>
           <div class="divider"></div>
           <label class="control-label">Color <input id="color" type="color" value="#22283b" /></label>
@@ -119,7 +120,7 @@
         <div class="scrubber-row"><input id="timeline-scrubber" type="range" min="0" max="71" value="0" /></div>
         <div id="timeline-tracks" class="timeline-tracks"></div>
       </section>
-      <footer class="statusbar"><span id="status">Ready</span><span>Space play · B draw · E erase · L lasso · R reference · Esc clear selection · H pan · [ ] brush size · Shift { } edge · +/− zoom · 1 fit · ⌘/Ctrl Z undo</span></footer>
+      <footer class="statusbar"><span id="status">Ready</span><span>Space play · B draw · E erase · G fill · L lasso · R reference · Esc clear selection · H pan · [ ] brush size · Shift { } edge · +/− zoom · 1 fit · ⌘/Ctrl Z undo</span></footer>
     </main>
     <script src="app.js"></script>
   </body>
