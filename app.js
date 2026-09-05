@@ -274,7 +274,42 @@
     }
   }
   $('save-project').onclick = saveProject;
-  $('open-project').onchange=async(e)=>{const file=e.target.files[0];if(!file)return;try{const doc=JSON.parse(await file.text());if(!doc.layers?.length)throw Error();await restoreDocument({...doc,activeId:null});state.projectFileHandle=null;state.history=[captureDocument()];state.redo=[];fitCanvas();setStatus('Project opened');}catch{setStatus('That file could not be opened');}e.target.value='';};
+  async function openProjectFile(file, fileHandle = null) {
+    try {
+      const doc = JSON.parse(await file.text());
+      if (!doc.layers?.length) throw Error();
+      await restoreDocument({ ...doc, activeId: null });
+      state.projectFileHandle = fileHandle;
+      state.history = [captureDocument()];
+      state.redo = [];
+      fitCanvas();
+      setStatus(fileHandle ? `Project opened: ${file.name}` : 'Project opened — the next save will ask where to save');
+    } catch {
+      setStatus('That file could not be opened');
+    }
+  }
+  async function openProject() {
+    if ('showOpenFilePicker' in window) {
+      try {
+        const [fileHandle] = await window.showOpenFilePicker({
+          multiple: false,
+          types: [{ description: 'fourNine project', accept: { 'application/json': ['.vibeart'] } }]
+        });
+        await openProjectFile(await fileHandle.getFile(), fileHandle);
+      } catch (error) {
+        if (error?.name === 'AbortError') setStatus('Open canceled');
+        else setStatus('Could not open project');
+      }
+    } else {
+      $('open-project-input').click();
+    }
+  }
+  $('open-project').onclick = openProject;
+  $('open-project-input').onchange = async event => {
+    const file = event.target.files[0];
+    if (file) await openProjectFile(file);
+    event.target.value = '';
+  };
   $('new-file').onclick=()=>{if(confirm('Start a new blank canvas? Unsaved work will be lost.')){clearSelection(true);clearReference(true);state.projectFileHandle=null;state.layers.forEach(l=>l.canvas.remove());state.layers=[];makeLayer('Layer 1');placeCanvas();fitCanvas();commitHistory();setStatus('New canvas created');}};
   function changeBrushSize(amount) { controls.size.value = Math.max(+controls.size.min, Math.min(+controls.size.max, +controls.size.value + amount)); controls.size.dispatchEvent(new Event('input')); setStatus(`Brush size: ${controls.size.value} px`); }
   function changeSoftness(amount) { controls.softness.value = Math.max(+controls.softness.min, Math.min(+controls.softness.max, +controls.softness.value + amount)); controls.softness.dispatchEvent(new Event('input')); setStatus(`Edge softness: ${controls.softness.value}%`); }
