@@ -173,6 +173,7 @@
     const ctx = layer.canvas.getContext('2d');
     const image = ctx.getImageData(0, 0, state.width, state.height);
     const pixels = image.data;
+    const filledMask = new Uint8Array(state.width * state.height);
     const start = (y * state.width + x) * 4;
     const target = [pixels[start], pixels[start + 1], pixels[start + 2], pixels[start + 3]];
     const hex = controls.color.value;
@@ -186,6 +187,7 @@
     const paint = (px, py) => {
       const index = (py * state.width + px) * 4;
       pixels[index] = fill[0]; pixels[index + 1] = fill[1]; pixels[index + 2] = fill[2]; pixels[index + 3] = fill[3];
+      filledMask[py * state.width + px] = 1;
     };
     const stack = [[x, y]];
     while (stack.length) {
@@ -204,6 +206,29 @@
         aboveOpen = aboveMatches;
         belowOpen = belowMatches;
       }
+    }
+    // Grow the filled region two pixels past its boundary. This covers the
+    // anti-aliased edge beneath line art, preventing a thin unfilled halo.
+    let expandedMask = filledMask;
+    for (let pass = 0; pass < 2; pass++) {
+      const nextMask = expandedMask.slice();
+      for (let pixel = 0; pixel < expandedMask.length; pixel++) {
+        if (!expandedMask[pixel]) continue;
+        const px = pixel % state.width;
+        const py = Math.floor(pixel / state.width);
+        for (let offsetY = -1; offsetY <= 1; offsetY++) {
+          for (let offsetX = -1; offsetX <= 1; offsetX++) {
+            const neighborX = px + offsetX, neighborY = py + offsetY;
+            if (neighborX >= 0 && neighborX < state.width && neighborY >= 0 && neighborY < state.height) nextMask[neighborY * state.width + neighborX] = 1;
+          }
+        }
+      }
+      expandedMask = nextMask;
+    }
+    for (let pixel = 0; pixel < expandedMask.length; pixel++) {
+      if (!expandedMask[pixel] || filledMask[pixel]) continue;
+      const index = pixel * 4;
+      pixels[index] = fill[0]; pixels[index + 1] = fill[1]; pixels[index + 2] = fill[2]; pixels[index + 3] = fill[3];
     }
     ctx.putImageData(image, 0, 0);
     commitHistory();
