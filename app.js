@@ -46,7 +46,7 @@
     syncReferenceControls();
     if (!quiet) setStatus('Reference image removed');
   }
-  function updateTimelineReadout() { $('frame-readout').textContent = `Frame ${state.timeline.frame + 1} / ${state.timeline.duration}`; $('timeline-scrubber').value = state.timeline.frame; }
+  function updateTimelineReadout() { $('frame-readout').textContent = `Frame ${state.timeline.frame + 1} / ${state.timeline.duration}`; $('timeline-scrubber').value = state.timeline.frame; $('go-to-frame').value = state.timeline.frame + 1; }
   function updatePlayhead() { const left = `${(state.timeline.frame / Math.max(1, state.timeline.duration - 1)) * 100}%`; document.querySelectorAll('.timeline-playhead').forEach(playhead => playhead.style.left = left); updateTimelineReadout(); }
   function refreshOnionSkin() { state.onionCanvases.forEach(canvas => canvas.remove()); state.onionCanvases = []; if (!state.timeline.onion) return; const addGhost = (frame, color, opacity, zIndex) => { const canvas = document.createElement('canvas'); canvas.width = state.width; canvas.height = state.height; canvas.className = 'paint-layer onion-skin'; canvas.style.opacity = opacity; canvas.style.zIndex = zIndex; const ctx = canvas.getContext('2d'); renderOnionComposite(ctx, frame); ctx.globalCompositeOperation = 'source-in'; ctx.fillStyle = color; ctx.fillRect(0, 0, state.width, state.height); ctx.globalCompositeOperation = 'source-over'; wrap.append(canvas); state.onionCanvases.push(canvas); }; if (state.timeline.frame > 0) addGhost(state.timeline.frame - 1, '#35c1ca', '.28', state.layers.length + 2); const selected = activeLayer(); if (selected && selected.end === state.timeline.frame && state.timeline.frame < state.timeline.duration - 1) addGhost(state.timeline.frame + 1, '#f7c970', '.22', state.layers.length + 3); }
   function setFrame(frame) {
@@ -64,7 +64,7 @@
     updatePlayhead();
   }
   function renderTimeline() {
-    state.timeline.frame = Math.max(0, Math.min(state.timeline.duration - 1, state.timeline.frame)); $('timeline-fps').value = state.timeline.fps; $('timeline-duration').value = state.timeline.duration; $('loop-timeline').checked = state.timeline.loop; $('onion-skin').classList.toggle('enabled', state.timeline.onion); $('timeline-scrubber').max = state.timeline.duration - 1;
+    state.timeline.frame = Math.max(0, Math.min(state.timeline.duration - 1, state.timeline.frame)); $('timeline-fps').value = state.timeline.fps; $('timeline-duration').value = state.timeline.duration; $('loop-timeline').checked = state.timeline.loop; $('onion-skin').classList.toggle('enabled', state.timeline.onion); $('timeline-scrubber').max = state.timeline.duration - 1; $('go-to-frame').max = state.timeline.duration;
     const tracks = $('timeline-tracks'); tracks.replaceChildren();
     state.layers.forEach(layer => {
       const row = document.createElement('div'); row.className = 'timeline-track';
@@ -305,8 +305,19 @@
   $('play-timeline').onclick = togglePlayback;
   $('loop-timeline').onchange = () => { state.timeline.loop = $('loop-timeline').checked; commitHistory(); };
   $('onion-skin').onclick = () => { state.timeline.onion = !state.timeline.onion; refreshOnionSkin(); renderTimeline(); commitHistory(); setStatus(state.timeline.onion ? 'Onion skin enabled' : 'Onion skin disabled'); };
-  $('timeline-scrubber').oninput = () => setFrame(+$('timeline-scrubber').value);
-  $('timeline-scrubber').onchange = () => commitHistory();
+  const timelineScrubber = $('timeline-scrubber');
+  let scrubberDragging = false;
+  const scrubberFrameAt = event => {
+    const rect = timelineScrubber.getBoundingClientRect();
+    setFrame(((event.clientX - rect.left) / rect.width) * (state.timeline.duration - 1));
+  };
+  timelineScrubber.onpointerdown = event => { scrubberDragging = true; timelineScrubber.setPointerCapture(event.pointerId); scrubberFrameAt(event); event.preventDefault(); };
+  timelineScrubber.onpointermove = event => { if (scrubberDragging) scrubberFrameAt(event); };
+  timelineScrubber.onpointerup = event => { if (!scrubberDragging) return; scrubberDragging = false; timelineScrubber.releasePointerCapture?.(event.pointerId); commitHistory(); };
+  timelineScrubber.onpointercancel = () => { scrubberDragging = false; };
+  timelineScrubber.oninput = () => { if (!scrubberDragging) setFrame(+timelineScrubber.value); };
+  timelineScrubber.onchange = () => { if (!scrubberDragging) commitHistory(); };
+  $('go-to-frame').onchange = () => { setFrame(+$('go-to-frame').value - 1); commitHistory(); };
   $('timeline-fps').onchange = () => { state.timeline.fps = Math.max(1, Math.min(60, +$('timeline-fps').value || 12)); $('timeline-fps').value = state.timeline.fps; commitHistory(); };
   $('timeline-duration').onchange = () => { state.timeline.duration = Math.max(1, Math.min(3600, +$('timeline-duration').value || 250)); $('timeline-duration').value = state.timeline.duration; state.layers.forEach(layer => { layer.start = Math.min(layer.start, state.timeline.duration - 1); layer.end = Math.max(layer.start, Math.min(layer.end, state.timeline.duration - 1)); }); setFrame(state.timeline.frame); renderLayers(); commitHistory(); };
   function renderTransparentComposite(ctx, frame) { ctx.clearRect(0, 0, state.width, state.height); [...state.layers].reverse().forEach(layer => { if (layerIsOnFrame(layer, frame)) { ctx.save(); ctx.globalAlpha = layer.opacity; ctx.drawImage(layer.canvas, 0, 0); ctx.restore(); } }); }
