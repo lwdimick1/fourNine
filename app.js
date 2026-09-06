@@ -357,8 +357,51 @@
   function resizeCanvas(){const w=+$('canvas-width').value,h=+$('canvas-height').value;if(!w||!h)return;clearSelection(true);const scaleX=w/state.width,scaleY=h/state.height;if(state.reference.src){state.reference.x*=scaleX;state.reference.y*=scaleY;state.reference.width*=scaleX;state.reference.height*=scaleY;state.reference.ratio=state.reference.width/state.reference.height;}state.layers.forEach(l=>{const old=l.canvas, next=document.createElement('canvas'),ctx=next.getContext('2d');next.width=w;next.height=h;next.className='paint-layer';ctx.drawImage(old,0,0);old.replaceWith(next);l.canvas=next;});state.width=w;state.height=h;placeCanvas();updateReferenceElement();renderLayers();fitCanvas();commitHistory();setStatus(`Canvas resized to ${w} × ${h}`);}
   $('resize-canvas').onclick=resizeCanvas;$('fit-canvas').onclick=fitCanvas;
   function download(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}
+  const zipCrcTable = (() => {
+    const table = new Uint32Array(256);
+    for (let index = 0; index < 256; index++) {
+      let value = index;
+      for (let bit = 0; bit < 8; bit++) value = value & 1 ? (value >>> 1) ^ 0xedb88320 : value >>> 1;
+      table[index] = value >>> 0;
+    }
+    return table;
+  })();
+  function zipCrc32(bytes) {
+    let value = 0xffffffff;
+    for (const byte of bytes) value = (value >>> 8) ^ zipCrcTable[(value ^ byte) & 0xff];
+    return (value ^ 0xffffffff) >>> 0;
+  }
+  async function createZip(entries) {
+    const encoder = new TextEncoder();
+    const localParts = [], centralParts = [];
+    let localOffset = 0, centralSize = 0;
+    for (const entry of entries) {
+      const name = encoder.encode(entry.name);
+      const contents = new Uint8Array(await entry.blob.arrayBuffer());
+      const crc = zipCrc32(contents);
+      const local = new Uint8Array(30 + name.length);
+      const localView = new DataView(local.buffer);
+      localView.setUint32(0, 0x04034b50, true); localView.setUint16(4, 20, true); localView.setUint16(6, 0x0800, true);
+      localView.setUint32(14, crc, true); localView.setUint32(18, contents.length, true); localView.setUint32(22, contents.length, true); localView.setUint16(26, name.length, true);
+      local.set(name, 30);
+      localParts.push(local, contents);
+
+      const central = new Uint8Array(46 + name.length);
+      const centralView = new DataView(central.buffer);
+      centralView.setUint32(0, 0x02014b50, true); centralView.setUint16(4, 20, true); centralView.setUint16(6, 20, true); centralView.setUint16(8, 0x0800, true);
+      centralView.setUint32(16, crc, true); centralView.setUint32(20, contents.length, true); centralView.setUint32(24, contents.length, true); centralView.setUint16(28, name.length, true); centralView.setUint32(42, localOffset, true);
+      central.set(name, 46);
+      centralParts.push(central);
+      localOffset += local.length + contents.length;
+      centralSize += central.length;
+    }
+    const end = new Uint8Array(22);
+    const endView = new DataView(end.buffer);
+    endView.setUint32(0, 0x06054b50, true); endView.setUint16(8, entries.length, true); endView.setUint16(10, entries.length, true); endView.setUint32(12, centralSize, true); endView.setUint32(16, localOffset, true);
+    return new Blob([...localParts, ...centralParts, end], { type: 'application/zip' });
+  }
   $('export-png').onclick=()=>{const out=document.createElement('canvas');out.width=state.width;out.height=state.height;renderComposite(out.getContext('2d'),state.timeline.frame);out.toBlob(b=>download(b,'fourNine-frame.png'));setStatus(`Frame ${state.timeline.frame + 1} exported`);};
-  $('export-layers').onclick=async()=>{const format=$('layer-export-format').value,extension=format==='png'?'png':'jpg',mime=format==='png'?'image/png':'image/jpeg';$('export-layers').disabled=true;for(let index=0;index<state.layers.length;index++){const layer=state.layers[index],out=document.createElement('canvas'),ctx=out.getContext('2d');out.width=state.width;out.height=state.height;if(format==='jpeg'){ctx.fillStyle='#fff';ctx.fillRect(0,0,state.width,state.height);}ctx.globalAlpha=layer.opacity;ctx.drawImage(layer.canvas,0,0);const blob=await new Promise(resolve=>out.toBlob(resolve,mime,.95));const safeName=layer.name.trim().replace(/[^a-z0-9-_]+/gi,'-').replace(/^-+|-+$/g,'')||`layer-${index+1}`;if(blob)download(blob,`fourNine-layer-${String(index+1).padStart(2,'0')}-${safeName}.${extension}`);setStatus(`Exported ${index+1} of ${state.layers.length} layers`);await new Promise(resolve=>setTimeout(resolve,120));} $('export-layers').disabled=false;setStatus('Layer export complete');};
+  $('export-layers').onclick=async()=>{const format=$('layer-export-format').value,extension=format==='png'?'png':'jpg',mime=format==='png'?'image/png':'image/jpeg',files=[];$('export-layers').disabled=true;try{for(let index=0;index<state.layers.length;index++){const layer=state.layers[index],out=document.createElement('canvas'),ctx=out.getContext('2d');out.width=state.width;out.height=state.height;if(format==='jpeg'){ctx.fillStyle='#fff';ctx.fillRect(0,0,state.width,state.height);}ctx.globalAlpha=layer.opacity;ctx.drawImage(layer.canvas,0,0);const blob=await new Promise(resolve=>out.toBlob(resolve,mime,.95));if(!blob)throw Error('Layer export failed');const safeName=layer.name.trim().replace(/[^a-z0-9-_]+/gi,'-').replace(/^-+|-+$/g,'')||`layer-${index+1}`;files.push({name:`fourNine-layer-${String(index+1).padStart(2,'0')}-${safeName}.${extension}`,blob});setStatus(`Preparing ${index+1} of ${state.layers.length} layers`);}download(await createZip(files),'fourNine-layers.zip');setStatus(`Downloaded ZIP with ${files.length} layers`);}catch{setStatus('Layer ZIP could not be created');}finally{$('export-layers').disabled=false;}};
   function projectData() {
     return {
       version: 3, width: state.width, height: state.height,
