@@ -22,7 +22,7 @@ No installation or account is required.
 - Timeline-based layer visibility and retiming
 - Playback, looping, scrubbing, and onion skinning
 - Save and reopen fourNine projects
-- Export a frame as PNG, individual layers as PNG or JPG, and animations as WebM video
+- Export a frame as PNG, all layers together in a ZIP of PNG or JPG files, and animations as WebM video
 
 ## Keyboard shortcuts
 
